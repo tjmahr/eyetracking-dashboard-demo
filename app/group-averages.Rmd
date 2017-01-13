@@ -1,0 +1,84 @@
+Group Averages
+======================================================================
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### `r groups$group1` Summary
+
+```{r, eval = TRUE, fig.retina=2}
+renderPlot({
+  req(input$analysisWindow)
+  req(input$windowSlider)
+  req(currentAggregation)
+  
+  group_df <- currentAggregation() %>% 
+    filter(Group == groups$group1)
+  
+  group_df_ref <- currentAggregation() %>% 
+    filter(Group == groups$group2)
+
+  p <- ggplot(group_df) +
+    aes(x = Time, y = Prop, color = Condition) +
+    geom_refline_chance(.5) +
+    geom_refline_window(input$analysisWindow) +
+    stat_summary(fun.data = mean_se, geom = "pointrange") +
+    stat_summary(data = group_df_ref, fun.data = mean_se, geom = "blank") +
+    xlim(input$windowSlider) + 
+    default_theme + 
+    labs(x = "Time (ms. after target onset)") +
+    labs(y = "Proportion looks to target")
+
+  suppressWarnings(print(p))
+})
+```
+
+> Data from 
+`r renderText(g1()[["n_kids"]])` children with 
+`r renderText(g1()[["n_trials"]])` trials.
+`r renderText(g1()[["n_kids_exc"]])` children excluded. 
+`r renderText(g1()[["n_trials_exc"]])` trials excluded. An additional
+`r renderText(g1()[["n_trials_missing"]])` trials were administered but did not 
+have any coded data.
+
+
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### `r groups$group2` Summary
+
+```{r, eval = TRUE}
+renderPlot({
+  req(input$analysisWindow)
+  req(input$windowSlider)
+  req(currentAggregation)
+  
+  group_df <- currentAggregation() %>% 
+    filter(Group == groups$group2)
+  
+  group_df_ref <- currentAggregation() %>% 
+    filter(Group == groups$group1)
+  
+  p <- ggplot(group_df) +
+    aes(x = Time, y = Prop, color = Condition) +
+    geom_refline_chance(.5) +
+    geom_refline_window(input$analysisWindow) +
+    stat_summary(fun.data = mean_se, geom = "pointrange") +
+    stat_summary(data = group_df_ref, fun.data = mean_se, geom = "blank") +
+    xlim(input$windowSlider) +
+    default_theme +
+    labs(x = "Time (ms. after target onset)") +
+    labs(y = "Proportion looks to target")
+  suppressWarnings(print(p))
+})
+```
+
+> Data from 
+`r renderText(g2()[["n_kids"]])` children with 
+`r renderText(g2()[["n_trials"]])` trials.
+`r renderText(g2()[["n_kids_exc"]])` children excluded. 
+`r renderText(g2()[["n_trials_exc"]])` trials excluded. An additional
+`r renderText(g2()[["n_trials_missing"]])` trials were administered but did not 
+have any coded data.

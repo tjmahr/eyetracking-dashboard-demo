@@ -1,0 +1,83 @@
+Participant Explorer {data-orientation=rows}
+=======================================================================  
+
+Row {data-height=550}
+-----------------------------------------------------------------------
+
+### Participant compared to group peers
+
+```{r plot-current-participant}
+currentParticipantData <- reactive({
+  req(currentAggregation)
+  req(input$groupName)
+  req(input$currentParticipant)
+  
+  currentAggregation() %>% 
+    filter(Group == input$groupName) %>% 
+    mutate(Highlight = Subject %in% input$currentParticipant)
+})
+
+
+renderPlot({
+  req(input$windowSlider, input$currentParticipant, input$analysisWindow,
+      currentParticipantData)
+
+  group_df <- currentParticipantData()
+  df_highlighted <- group_df %>% filter(Highlight)
+  df_grey <- group_df %>% filter(!Highlight)
+
+  legend_pos <- ifelse(1 < length(input$currentParticipant), "bottom", "none")
+  
+  p <- ggplot(df_grey) +
+    aes(x = Time, y = Prop, group = Subject) +
+    geom_refline_chance(.5) +
+    geom_refline_window(input$analysisWindow) +
+    geom_line(color = "grey70") + 
+    geom_line(aes(color = factor(Subject)), data = df_highlighted, size = 1.25) + 
+    xlim(input$windowSlider) +
+    facet_wrap(~ Condition) +
+    default_theme +
+    theme(legend.position = legend_pos) + 
+    labs(color = "Subject", y = "Proportion")
+  suppressWarnings(print(p))
+})
+```
+
+
+Row {data-height=450}
+-----------------------------------------------------------------------
+
+```{r select-group}
+renderUI({
+  req(currentDataClean)
+  groups <- currentDataClean() %>% getElement("Group") %>% unique %>% sort
+  selectInput(
+    inputId = 'groupName', 
+    label = 'Choose group:', 
+    choices = unique(groups), 
+    selected = unique(groups)[1]
+  )
+})
+```
+
+```{r selectize-participant}
+renderUI({
+  req(input$groupName)
+  
+  participants <- currentDataClean() %>% 
+    distinct(Group, Subject) %>% 
+    filter(Group == input$groupName) %>%
+    getElement("Subject") %>% 
+    sort
+  
+  selectInput(
+    inputId = 'currentParticipant', 
+    label = 'Choose participant:', 
+    choices = unique(participants), 
+    selected = unique(participants)[1],
+    selectize = TRUE,
+    multiple = TRUE
+  )
+})
+```
+

@@ -1,0 +1,526 @@
+---
+title: "Eyetracking dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: scroll
+    logo: ./assets/logo.png
+    favicon: favicon.png
+runtime: shiny
+---
+
+
+
+```{r setup, include = FALSE}
+library(flexdashboard)
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(littlelisteners)
+
+session$onSessionEnded(stopApp)
+
+# Locate and load data
+dir_proj <- rprojroot::find_root(rprojroot::is_rstudio_project) 
+dir_app <- file.path(dir_proj, "app")
+
+config <- dir_app %>% 
+  file.path("controller.yaml") %>% 
+  yaml::yaml.load_file()
+
+scores <- dir_app %>% 
+  file.path("data", "scores.csv") %>% 
+  readr::read_csv()
+
+load(file.path(dir_app, "data", "data.rds"))
+```
+
+
+```{r shared-logic}
+# Get information about the data from the configuration file
+groups <- config$defaults$groups
+aggregations <- config$defaults$aggregations
+
+response_col <-  config$defaults$response_codes$gaze_by_image_type$data_map
+response_def <- config$defaults$response_codes$gaze_by_image_type$def
+
+# Helper functions
+count_children_by_group <- function(df) {
+  counts <- df %>%
+    select(Group, Subject) %>%
+    distinct %>%
+    count(Group)
+
+  counts %>% 
+    split(.$Group) %>% 
+    purrr::map("n")
+}
+
+# Sometimes trials run long due to a resource buffer, so just keep times that
+# are used by 90% of trials so those weirdly long trials don't mangle the
+# plotting defaults
+find_common_trial_times <- function(df) { 
+  time_range <- df  %>% 
+    getElement("Time") %>% 
+    find_frequent_interval(min_freq = .90)
+    
+  df %>% 
+    filter(time_range$lower <= Time, Time <= time_range$upper)
+}
+ 
+# Identify trials with excessive missing data
+find_trials_to_exclude <- function(df, na_limit, window) {
+  df %>% 
+    filter(min(window) <= Time, Time <= max(window)) %>% 
+    aggregate_looks_(response_def, aggregations$trial_missing_data, response_col) %>% 
+    as.tbl %>% 
+    filter(na_limit <= PropNA)
+}
+```
+
+```{r plotting-helpers}
+# Plotting aesthetics
+ref_line_style <- list(
+  color = "white", 
+  size = 2, 
+  linetype = "solid"
+)
+
+default_theme <- theme_grey(base_size = 14) + 
+  theme(legend.position	= "bottom", legend.direction = "horizontal") 
+
+geom_refline_chance <- function(xs) {
+    geom_hline(
+      yintercept = xs, 
+      color = ref_line_style$color, 
+      size = ref_line_style$size,
+      linetype = ref_line_style$linetype)
+}
+
+geom_refline_window <- function(xs) {
+  geom_vline(
+    xintercept = xs, 
+    color = ref_line_style$color, 
+    size = ref_line_style$size,
+    linetype = ref_line_style$linetype)
+}
+```
+
+
+
+```{r interactive-mocks}
+## Create mock versions of the reactive functions so I can test code without
+## running the app.
+
+debug <- FALSE
+
+if (interactive() & debug) {
+  input <- list(
+    studyName = "Coarticulation", 
+    missingData = .5,
+    analysisWindow = c(0, 2000),
+    windowSlider = c(-500, 2500),
+    splittingMeasure = "Age")
+
+  selectedStudy <- function() looks %>% filter(Experiment == input$studyName)
+  
+  rawStudyData <- function() selectedStudy() %>% find_common_trial_times()
+  
+  currentScores <- function() {
+    req(currentAggregation)
+    currentAggregation() %>% 
+      distinct(StudySet, Experiment, Group, Subject) %>% 
+      inner_join(scores)
+  }
+  
+  computeMedSplits <- function() {
+    req(input$splittingMeasure)
+    req(currentScores)
+    temp_scores <- currentScores() %>% 
+      filter(Measure == input$splittingMeasure) %>% 
+      # tidyr::spread(Measure, Value) %>% 
+      group_by(Group) %>% 
+      mutate(Median_Split_Bins = ntile(Value, 2),
+             Median_Split = if_else(Median_Split_Bins == 1, "Lower", "Upper", NA_character_)) %>% 
+      ungroup()
+    temp_scores
+  }
+
+  getStudyDetails <- function() {
+    config$specifics %>% 
+      purrr::keep(~ .x$study == input$studyName) %>% 
+      purrr::flatten()
+  }
+  
+  currentTrialsToExclude <- function() {
+    find_trials_to_exclude(
+      rawStudyData(),
+      input$missingData / 100,
+      input$analysisWindow
+    )
+  }
+  
+  countUncodedTrials <- function() {
+    max_trials <- getStudyDetails() %>% 
+      getElement("expected_trials")
+    
+    uncoded_trials <- selectedStudy() %>% 
+      distinct(Experiment, Group, Subject, Block, TrialNo) %>% 
+      count(Experiment, Group, Subject, Block) %>% 
+      ungroup() %>% 
+      mutate(UncodedTrials = max_trials - n) %>% 
+      select(-n)
+    
+    uncoded_trials
+  }
+  
+  currentDataClean <- function() {
+    rawStudyData() %>% 
+      anti_join(currentTrialsToExclude(), by = aggregations$trial_missing_data) 
+  }
+  
+  
+  currentAggregation <- function() {
+    aggregate_looks_(
+      data = currentDataClean(),
+      resp_def = response_def, 
+      grouping = aggregations$condition_growth_curve, 
+      resp_col = response_col)
+  }
+  
+  currentGroupCounts <- function() {
+    currentDataClean() %>% count_children_by_group()
+  }
+  
+  rawGroupCounts <- function() {
+    rawStudyData() %>% count_children_by_group()
+  }
+
+  currentTrialCounts <- function() {
+    counts <- currentDataClean() %>%
+      select(Group, Subject, Block, TrialNo) %>%
+      distinct() %>%
+      count(Group)
+  
+    counts %>% 
+      split(.$Group) %>% 
+      purrr::map("n")
+  }
+      
+}
+```
+
+
+
+
+Column {.sidebar}
+======================================================================
+
+Tracking method: Hand-coded.
+
+***
+
+```{r main-controllers}
+selectInput(
+  inputId = 'studyName', 
+  label = 'Choose study:', 
+  choices = unique(looks$Experiment), 
+  selected = unique(looks$Experiment)[1]
+)
+
+```
+
+```{r set-analysis-window}
+renderUI({
+  sliderInput(
+    inputId = "analysisWindow", 
+    label = "Analysis window:",
+    min = rawStudyData()[["Time"]] %>% pretty(n = 20) %>% min,
+    max = rawStudyData()[["Time"]] %>% pretty(n = 20) %>% max,
+    value = c(0, 2000),
+    step = 100)
+})
+
+selectedStudy <- reactive({
+  req(input$studyName)
+  looks %>% 
+    filter(Experiment == input$studyName)
+})
+
+currentScores <- reactive({
+  req(currentAggregation)
+  currentAggregation() %>% 
+    distinct(StudySet, Experiment, Group, Subject) %>% 
+    inner_join(scores)
+})
+  
+renderUI({
+  sliderInput(
+    inputId = "missingData", 
+    label = "Exclude trials if the percentage of missing data during analysis window exceeds:",
+    min = 0, 
+    max = 100,
+    value = 50,
+    step = 5)
+})
+```
+
+&nbsp;
+
+```{r plotting-window}
+renderUI({
+  sliderInput(
+    inputId = "windowSlider", 
+    label = "Plotting window:",
+    min = currentAggregation()[["Time"]] %>% pretty(n = 20) %>% min,
+    max = currentAggregation()[["Time"]] %>% pretty(n = 20) %>% max,
+    value = c(-2000, 2500),
+    step = 100)
+})
+
+```
+
+```{r update-data}
+rawStudyData <- reactive({
+  req(selectedStudy)
+  selectedStudy() %>% find_common_trial_times
+})
+
+currentTrialsToExclude <- reactive({
+  req(rawStudyData)
+  req(input$missingData)
+  req(input$analysisWindow)
+  
+  find_trials_to_exclude(
+    rawStudyData(),
+    input$missingData / 100,
+    input$analysisWindow
+  )
+})
+
+getStudyDetails <- reactive({
+  req(input$studyName)
+  config$specifics %>% 
+    purrr::keep(~ .x$study == input$studyName) %>% 
+    purrr::flatten()
+})
+
+# countPossibleTrials
+
+countUncodedTrials <- reactive({
+  req(getStudyDetails)
+  
+  max_trials <- getStudyDetails() %>% getElement("expected_trials")
+
+  uncoded_trials <- selectedStudy() %>% 
+    distinct(Experiment, Group, Subject, Block, TrialNo) %>% 
+    count(Experiment, Group, Subject, Block) %>% 
+    ungroup %>% 
+    mutate(UncodedTrials = max_trials - n) %>% 
+    select(-n)
+  
+  uncoded_trials
+})
+
+currentDataClean <- reactive({
+  req(rawStudyData)
+  req(currentTrialsToExclude)
+  
+  rawStudyData() %>% 
+    anti_join(currentTrialsToExclude(), by = aggregations$trial_missing_data) 
+})
+
+
+currentAggregation <- reactive({
+  req(currentDataClean)  
+  
+  currentDataClean() %>% 
+    aggregate_looks_(response_def, aggregations$condition_growth_curve, response_col)
+})
+
+
+currentGroupCounts <- reactive({
+  req(currentDataClean)
+  currentDataClean() %>% count_children_by_group
+})
+
+rawGroupCounts <- reactive({
+  req(rawStudyData)
+  rawStudyData() %>% count_children_by_group
+})
+
+currentTrialCounts <- reactive({
+  req(currentDataClean)
+  
+  counts <- currentDataClean() %>%
+    select(Group, Subject, Block, TrialNo) %>%
+    distinct %>%
+    count(Group)
+
+  counts %>% 
+    split(.$Group) %>% 
+    purrr::map("n")
+})
+
+```
+
+
+```{r reactive group counts}
+g1 <- reactive(list(
+  n_kids = currentGroupCounts()[[groups$group1]],
+  n_trials = currentTrialCounts()[[groups$group1]],
+  n_kids_exc = rawGroupCounts()[[groups$group1]] - currentGroupCounts()[[groups$group1]],
+  n_trials_exc = currentTrialsToExclude() %>% filter(Group == groups$group1) %>% nrow,
+  n_trials_missing = countUncodedTrials() %>% filter(Group == groups$group1) %>% getElement("UncodedTrials") %>% sum
+))
+g2 <- reactive(list(
+  n_kids = currentGroupCounts()[[groups$group2]],
+  n_trials = currentTrialCounts()[[groups$group2]],
+  n_kids_exc = rawGroupCounts()[[groups$group2]] - currentGroupCounts()[[groups$group2]],
+  n_trials_exc = currentTrialsToExclude() %>% filter(Group == groups$group2) %>% nrow,
+  n_trials_missing = countUncodedTrials() %>% filter(Group == groups$group2) %>% getElement("UncodedTrials") %>% sum
+))
+```
+
+
+
+
+
+
+
+
+
+
+```{r Group Averages page, child = "./group-averages.Rmd"}
+```
+
+```{r Participant Explorer page, child = "./participant-explorer.Rmd"}
+```
+
+
+Simple Effects {data-orientation=rows}
+======================================================================
+
+Row {data-height=75}
+-----------------------------------------------------------------------
+
+```{r}
+renderUI({
+  req(currentDataClean)
+  groups <- currentDataClean() %>% getElement("Group") %>% unique %>% sort
+  selectInput(
+    inputId = 'groupName2', 
+    label = 'Just plot data from group:', 
+    choices = unique(groups), 
+    selected = unique(groups)[1]
+  )
+})
+```
+
+
+```{r select-measure}
+renderUI({
+  req(currentScores)
+  measures <- currentScores() %>% getElement("Measure") %>% unique
+  selectInput(
+    inputId = 'splittingMeasure', 
+    label = 'Median split by:', 
+    choices = unique(measures), 
+    selected = unique(measures)[1]
+  )
+})
+
+computeMedSplits <- reactive({
+  req(input$splittingMeasure)
+  temp_scores <- currentScores() %>% 
+    filter(Measure == input$splittingMeasure) %>% 
+    # tidyr::spread(Measure, Value) %>% 
+    group_by(Group) %>% 
+    mutate(Median_Split_Bins = ntile(Value, 2),
+           Median_Split = if_else(Median_Split_Bins == 1, "Lower 50%", "Upper 50%", NA_character_)) %>% 
+    ungroup
+  temp_scores
+})
+
+```
+
+
+Row {data-height=450}
+-----------------------------------------------------------------------
+
+```{r, eval = TRUE, fig.retina=2}
+renderPlot({
+  req(input$analysisWindow)
+  req(input$groupName2)
+  req(input$windowSlider)
+  req(currentAggregation)
+  req(computeMedSplits)
+  req(input$splittingMeasure)
+  
+  splits <- computeMedSplits() %>% 
+    filter(!is.na(Median_Split_Bins))
+  
+  df <- currentAggregation() %>% 
+    inner_join(splits) %>% 
+    filter(Group %in% input$groupName2)
+    
+
+  title <- sprintf("Group: %s. Median splits by %s", input$groupName2, input$splittingMeasure)
+  p <- ggplot(df) +
+    aes(x = Time, y = Prop, fill = Condition, linetype = Median_Split) +
+    geom_refline_chance(.5) +
+    geom_refline_window(input$analysisWindow) +
+    stat_summary(fun.data = mean_se, geom = "ribbon", alpha = .1) +
+    stat_summary(aes(color = Condition), fun.y = mean, geom = "line", size = 1) +
+    xlim(input$windowSlider) + 
+    default_theme + 
+    theme(legend.position = "bottom", legend.box = "horizontal") + 
+    labs(x = "Time (ms. after target onset)") +
+    labs(y = "Proportion looks to target") + 
+    labs(linetype = input$splittingMeasure) + 
+    facet_grid(. ~ Condition) + 
+    ggtitle(title)
+    
+  suppressWarnings(print(p))
+})
+```
+
+
+
+
+
+Row {data-height=300}
+-----------------------------------------------------------------------
+
+
+### Boxplot 
+
+```{r}
+renderPlot({
+  req(computeMedSplits)
+  
+  splits <- computeMedSplits() %>% 
+    filter(!is.na(Median_Split_Bins))
+  
+  ggplot(splits) + 
+    aes(x = Group, y = Value) + 
+    geom_boxplot() +
+    labs(y = input$splittingMeasure)
+})
+```
+
+
+### Summary 
+
+```{r}
+medianSplitStats <- reactive({
+  req(computeMedSplits)
+  computeMedSplits() %>% 
+    group_by(StudySet, Group, Median_Split) %>% 
+    summarise(N = n(), Mean = mean(Value), Min = min(Value), Max = max(Value)) %>% 
+    ungroup %>% 
+    select(-StudySet)
+})
+
+renderTable(medianSplitStats())
+```

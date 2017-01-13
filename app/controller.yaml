@@ -1,0 +1,61 @@
+defaults:
+  groups:
+    group1: "Even"
+    group2: "Odd"
+
+  data_map:
+    study: "Experiment"
+    exp_version: "Block"
+    group: "Group"
+    subject: "Subject"
+    time: "Time"
+    condition: "Condition"
+    gaze_by_image_type: "GazeByImageAOI"
+
+  aggregations:
+    trial_missing_data:
+      - StudySet
+      - Experiment
+      - Group
+      - Subject
+      - Condition
+      - Block
+      - TrialNo
+    condition_growth_curve:
+      - StudySet
+      - Experiment
+      - Group
+      - Subject
+      - Condition
+      - Time
+
+  response_codes:
+    gaze_by_image_type:
+      data_map: "GazeByImageAOI"
+      def:
+        missing: .na
+        elsewhere: "tracked"
+        primary: "Target"
+        others: "Distractor"
+    gaze_by_image_location:
+      data_map: "GazeByAOI"
+      def:
+        missing: .na
+        elsewhere: "tracked"
+        primary: "ImageR"
+        others: "ImageL"
+
+specifics:
+  - study: "Coarticulation"
+    expected_trials: 23
+    conditions:
+      details:
+        - name: "facilitating"
+          expected_trials: 8
+        - name: "filler"
+          expected_trials: 7
+        - name: "neutral"
+          expected_trials: 8
+      comparisons:
+        primary: ["facilitating", "neutral"]
+        all: ["facilitating", "neutral", "filler"]
