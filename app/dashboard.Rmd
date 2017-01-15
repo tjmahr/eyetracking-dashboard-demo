@@ -24,8 +24,15 @@ library(littlelisteners)
 session$onSessionEnded(stopApp)
 
 # Locate and load data
-dir_proj <- rprojroot::find_root(rprojroot::is_rstudio_project) 
-dir_app <- file.path(dir_proj, "app")
+
+# App is in a subfolder of an RStudio project, unless it's running in
+# ShinyApps.io, so look for Rproj or fail with "./"
+find_app_dir <- function() {
+  dir_proj <- rprojroot::find_root(rprojroot::is_rstudio_project) 
+   file.path(dir_proj, "app")
+}
+
+dir_app <- purrr::possibly(find_app_dir, ".", quiet = TRUE)()
 
 config <- dir_app %>% 
   file.path("controller.yaml") %>% 
@@ -219,7 +226,7 @@ if (interactive() & debug) {
 Column {.sidebar}
 ======================================================================
 
-Tracking method: Hand-coded.
+Tracking method: Tobii.
 
 ***
 
@@ -386,11 +393,34 @@ g2 <- reactive(list(
 ```
 
 
+About {data-orientation=rows}
+===============================================================================
 
+Row {data-height=400}
+-----------------------------------------------------------------------
 
+### About the app
 
+This Shiny app is a demo of a dashboard I created to visualize data from a
+series of eyetracking experiments with toddlers. 
 
+For the demo, I used data from 
+[our 2015 paper](https://github.com/tjmahr/2015_Coartic). I artificially split 
+the participants into odd/even numbered
+groups to recreate the purpose of the original dashboard design which compares
+toddlers with autism spectrum disorders and typically developing toddlers.
 
+[Tristan Mahr](https://tjmahr.github.io/)
+
+### About the plots
+
+Eyetracking experiments are used to study the process of word recognition in
+young children and adults by revealing when listeners switch focus to images on
+screen in response to speech. Word recognition is commonly visualized with an
+accuracy [growth curve](https://www.crcpress.com/Growth-Curve-Analysis-and-Visualization-Using-R/Mirman/p/book/9781466584327) showing the proportion of looks to a named image over
+time. These typically start at a chance (50% for an experiment with two images
+on screen) and then rise as the word unfolds. This dashboard provides a number 
+of different ways to view these growth curves.
 
 
 
