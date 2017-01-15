@@ -401,14 +401,15 @@ Row {data-height=400}
 
 ### About the app
 
-This Shiny app is a demo of a dashboard I created to visualize data from a
-series of eyetracking experiments with toddlers. 
+This [Shiny app](https://github.com/tjmahr/eyetracking-dashboard-demo) is a
+demo of a dashboard I created to visualize data from a series of eyetracking 
+experiments with toddlers. 
 
 For the demo, I used data from 
 [our 2015 paper](https://github.com/tjmahr/2015_Coartic). I artificially split 
-the participants into odd/even numbered
-groups to recreate the purpose of the original dashboard design which compares
-toddlers with autism spectrum disorders and typically developing toddlers.
+the participants into odd/even numbered groups to recreate the purpose of the 
+original dashboard design which compares toddlers with autism spectrum 
+disorders and typically developing toddlers.
 
 [Tristan Mahr](https://tjmahr.github.io/)
 
