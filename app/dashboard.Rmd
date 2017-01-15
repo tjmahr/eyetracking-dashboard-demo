@@ -1,12 +1,15 @@
 ---
 title: "Eyetracking dashboard"
-output: 
+resource_files:
+- data/scores.csv
+- data/data.rds
+runtime: shiny
+output:
   flexdashboard::flex_dashboard:
+    favicon: favicon.png
+    logo: ./assets/logo.png
     orientation: columns
     vertical_layout: scroll
-    logo: ./assets/logo.png
-    favicon: favicon.png
-runtime: shiny
 ---
 
 
