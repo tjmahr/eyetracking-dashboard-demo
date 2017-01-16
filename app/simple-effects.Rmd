@@ -1,0 +1,126 @@
+Simple Effects {data-orientation=rows}
+======================================================================
+
+Row {data-height=75}
+-----------------------------------------------------------------------
+
+```{r}
+renderUI({
+  req(currentDataClean)
+  groups <- currentDataClean() %>% getElement("Group") %>% unique %>% sort
+  selectInput(
+    inputId = 'groupName2', 
+    label = 'Just plot data from group:', 
+    choices = unique(groups), 
+    selected = unique(groups)[1]
+  )
+})
+```
+
+
+```{r select-measure}
+renderUI({
+  req(currentScores)
+  measures <- currentScores() %>% getElement("Measure") %>% unique
+  selectInput(
+    inputId = 'splittingMeasure', 
+    label = 'Median split by:', 
+    choices = unique(measures), 
+    selected = unique(measures)[1]
+  )
+})
+
+computeMedSplits <- reactive({
+  req(input$splittingMeasure)
+  temp_scores <- currentScores() %>% 
+    filter(Measure == input$splittingMeasure) %>% 
+    # tidyr::spread(Measure, Value) %>% 
+    group_by(Group) %>% 
+    mutate(Median_Split_Bins = ntile(Value, 2),
+           Median_Split = if_else(Median_Split_Bins == 1, "Lower 50%", "Upper 50%", NA_character_)) %>% 
+    ungroup
+  temp_scores
+})
+
+```
+
+
+Row {data-height=450}
+-----------------------------------------------------------------------
+
+```{r, eval = TRUE, fig.retina=2}
+renderPlot({
+  req(input$analysisWindow)
+  req(input$groupName2)
+  req(input$windowSlider)
+  req(currentAggregation)
+  req(computeMedSplits)
+  req(input$splittingMeasure)
+  
+  splits <- computeMedSplits() %>% 
+    filter(!is.na(Median_Split_Bins))
+  
+  df <- currentAggregation() %>% 
+    inner_join(splits) %>% 
+    filter(Group %in% input$groupName2)
+    
+
+  title <- sprintf("Group: %s. Median splits by %s", input$groupName2, input$splittingMeasure)
+  p <- ggplot(df) +
+    aes(x = Time, y = Prop, fill = Condition, linetype = Median_Split) +
+    geom_refline_chance(.5) +
+    geom_refline_window(input$analysisWindow) +
+    stat_summary(fun.data = mean_se, geom = "ribbon", alpha = .1) +
+    stat_summary(aes(color = Condition), fun.y = mean, geom = "line", size = 1) +
+    xlim(input$windowSlider) + 
+    default_theme + 
+    theme(legend.position = "bottom", legend.box = "horizontal") + 
+    labs(x = "Time (ms. after target onset)") +
+    labs(y = "Proportion looks to target") + 
+    labs(linetype = input$splittingMeasure) + 
+    facet_grid(. ~ Condition) + 
+    ggtitle(title)
+    
+  suppressWarnings(print(p))
+})
+```
+
+
+
+
+
+Row {data-height=300}
+-----------------------------------------------------------------------
+
+
+### Boxplot 
+
+```{r}
+renderPlot({
+  req(computeMedSplits)
+  
+  splits <- computeMedSplits() %>% 
+    filter(!is.na(Median_Split_Bins))
+  
+  ggplot(splits) + 
+    aes(x = Group, y = Value) + 
+    geom_boxplot() +
+    labs(y = input$splittingMeasure)
+})
+```
+
+
+### Summary 
+
+```{r}
+medianSplitStats <- reactive({
+  req(computeMedSplits)
+  computeMedSplits() %>% 
+    group_by(StudySet, Group, Median_Split) %>% 
+    summarise(N = n(), Mean = mean(Value), Min = min(Value), Max = max(Value)) %>% 
+    ungroup() %>% 
+    select(-StudySet)
+})
+
+renderTable(medianSplitStats())
+```

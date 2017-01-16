@@ -23,6 +23,7 @@ renderPlot({
     geom_refline_chance(.5) +
     geom_refline_window(input$analysisWindow) +
     stat_summary(fun.data = mean_se, geom = "pointrange") +
+    # Draw the other group with a blank so the y-axis is same in both plots
     stat_summary(data = group_df_ref, fun.data = mean_se, geom = "blank") +
     xlim(input$windowSlider) + 
     default_theme + 
@@ -66,6 +67,7 @@ renderPlot({
     geom_refline_chance(.5) +
     geom_refline_window(input$analysisWindow) +
     stat_summary(fun.data = mean_se, geom = "pointrange") +
+    # Draw the other group with a blank so the y-axis is same in both plots
     stat_summary(data = group_df_ref, fun.data = mean_se, geom = "blank") +
     xlim(input$windowSlider) +
     default_theme +

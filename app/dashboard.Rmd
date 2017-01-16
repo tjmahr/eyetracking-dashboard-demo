@@ -29,7 +29,7 @@ session$onSessionEnded(stopApp)
 # ShinyApps.io, so look for Rproj or fail with "./"
 find_app_dir <- function() {
   dir_proj <- rprojroot::find_root(rprojroot::is_rstudio_project) 
-   file.path(dir_proj, "app")
+  file.path(dir_proj, "app")
 }
 
 dir_app <- purrr::possibly(find_app_dir, ".", quiet = TRUE)()
@@ -189,7 +189,6 @@ if (interactive() & debug) {
       anti_join(currentTrialsToExclude(), by = aggregations$trial_missing_data) 
   }
   
-  
   currentAggregation <- function() {
     aggregate_looks_(
       data = currentDataClean(),
@@ -293,7 +292,7 @@ renderUI({
 ```{r update-data}
 rawStudyData <- reactive({
   req(selectedStudy)
-  selectedStudy() %>% find_common_trial_times
+  selectedStudy() %>% find_common_trial_times()
 })
 
 currentTrialsToExclude <- reactive({
@@ -325,7 +324,7 @@ countUncodedTrials <- reactive({
   uncoded_trials <- selectedStudy() %>% 
     distinct(Experiment, Group, Subject, Block, TrialNo) %>% 
     count(Experiment, Group, Subject, Block) %>% 
-    ungroup %>% 
+    ungroup() %>% 
     mutate(UncodedTrials = max_trials - n) %>% 
     select(-n)
   
@@ -337,26 +336,28 @@ currentDataClean <- reactive({
   req(currentTrialsToExclude)
   
   rawStudyData() %>% 
-    anti_join(currentTrialsToExclude(), by = aggregations$trial_missing_data) 
+    anti_join(currentTrialsToExclude(), by = aggregations$trial_missing_data)
 })
 
 
 currentAggregation <- reactive({
   req(currentDataClean)  
-  
-  currentDataClean() %>% 
-    aggregate_looks_(response_def, aggregations$condition_growth_curve, response_col)
+  aggregate_looks_(
+    data = currentDataClean(),
+    resp_def = response_def, 
+    grouping = aggregations$condition_growth_curve, 
+    resp_col = response_col)
 })
 
 
 currentGroupCounts <- reactive({
   req(currentDataClean)
-  currentDataClean() %>% count_children_by_group
+  currentDataClean() %>% count_children_by_group()
 })
 
 rawGroupCounts <- reactive({
   req(rawStudyData)
-  rawStudyData() %>% count_children_by_group
+  rawStudyData() %>% count_children_by_group()
 })
 
 currentTrialCounts <- reactive({
@@ -364,7 +365,7 @@ currentTrialCounts <- reactive({
   
   counts <- currentDataClean() %>%
     select(Group, Subject, Block, TrialNo) %>%
-    distinct %>%
+    distinct() %>%
     count(Group)
 
   counts %>% 
@@ -380,15 +381,25 @@ g1 <- reactive(list(
   n_kids = currentGroupCounts()[[groups$group1]],
   n_trials = currentTrialCounts()[[groups$group1]],
   n_kids_exc = rawGroupCounts()[[groups$group1]] - currentGroupCounts()[[groups$group1]],
-  n_trials_exc = currentTrialsToExclude() %>% filter(Group == groups$group1) %>% nrow,
-  n_trials_missing = countUncodedTrials() %>% filter(Group == groups$group1) %>% getElement("UncodedTrials") %>% sum
+  n_trials_exc = currentTrialsToExclude() %>% 
+    filter(Group == groups$group1) %>% 
+    nrow(),
+  n_trials_missing = countUncodedTrials() %>% 
+    filter(Group == groups$group1) %>% 
+    getElement("UncodedTrials") %>% 
+    sum()
 ))
 g2 <- reactive(list(
   n_kids = currentGroupCounts()[[groups$group2]],
   n_trials = currentTrialCounts()[[groups$group2]],
   n_kids_exc = rawGroupCounts()[[groups$group2]] - currentGroupCounts()[[groups$group2]],
-  n_trials_exc = currentTrialsToExclude() %>% filter(Group == groups$group2) %>% nrow,
-  n_trials_missing = countUncodedTrials() %>% filter(Group == groups$group2) %>% getElement("UncodedTrials") %>% sum
+  n_trials_exc = currentTrialsToExclude() %>% 
+    filter(Group == groups$group2) %>% 
+    nrow(),
+  n_trials_missing = countUncodedTrials() %>% 
+    filter(Group == groups$group2) %>% 
+    getElement("UncodedTrials") %>% 
+    sum()
 ))
 ```
 
@@ -401,130 +412,7 @@ g2 <- reactive(list(
 ```{r Participant Explorer page, child = "./participant-explorer.Rmd"}
 ```
 
-
-Simple Effects {data-orientation=rows}
-======================================================================
-
-Row {data-height=75}
------------------------------------------------------------------------
-
-```{r}
-renderUI({
-  req(currentDataClean)
-  groups <- currentDataClean() %>% getElement("Group") %>% unique %>% sort
-  selectInput(
-    inputId = 'groupName2', 
-    label = 'Just plot data from group:', 
-    choices = unique(groups), 
-    selected = unique(groups)[1]
-  )
-})
+```{r Simple Effects page, child = "./simple-effects.Rmd"}
 ```
 
 
-```{r select-measure}
-renderUI({
-  req(currentScores)
-  measures <- currentScores() %>% getElement("Measure") %>% unique
-  selectInput(
-    inputId = 'splittingMeasure', 
-    label = 'Median split by:', 
-    choices = unique(measures), 
-    selected = unique(measures)[1]
-  )
-})
-
-computeMedSplits <- reactive({
-  req(input$splittingMeasure)
-  temp_scores <- currentScores() %>% 
-    filter(Measure == input$splittingMeasure) %>% 
-    # tidyr::spread(Measure, Value) %>% 
-    group_by(Group) %>% 
-    mutate(Median_Split_Bins = ntile(Value, 2),
-           Median_Split = if_else(Median_Split_Bins == 1, "Lower 50%", "Upper 50%", NA_character_)) %>% 
-    ungroup
-  temp_scores
-})
-
-```
-
-
-Row {data-height=450}
------------------------------------------------------------------------
-
-```{r, eval = TRUE, fig.retina=2}
-renderPlot({
-  req(input$analysisWindow)
-  req(input$groupName2)
-  req(input$windowSlider)
-  req(currentAggregation)
-  req(computeMedSplits)
-  req(input$splittingMeasure)
-  
-  splits <- computeMedSplits() %>% 
-    filter(!is.na(Median_Split_Bins))
-  
-  df <- currentAggregation() %>% 
-    inner_join(splits) %>% 
-    filter(Group %in% input$groupName2)
-    
-
-  title <- sprintf("Group: %s. Median splits by %s", input$groupName2, input$splittingMeasure)
-  p <- ggplot(df) +
-    aes(x = Time, y = Prop, fill = Condition, linetype = Median_Split) +
-    geom_refline_chance(.5) +
-    geom_refline_window(input$analysisWindow) +
-    stat_summary(fun.data = mean_se, geom = "ribbon", alpha = .1) +
-    stat_summary(aes(color = Condition), fun.y = mean, geom = "line", size = 1) +
-    xlim(input$windowSlider) + 
-    default_theme + 
-    theme(legend.position = "bottom", legend.box = "horizontal") + 
-    labs(x = "Time (ms. after target onset)") +
-    labs(y = "Proportion looks to target") + 
-    labs(linetype = input$splittingMeasure) + 
-    facet_grid(. ~ Condition) + 
-    ggtitle(title)
-    
-  suppressWarnings(print(p))
-})
-```
-
-
-
-
-
-Row {data-height=300}
------------------------------------------------------------------------
-
-
-### Boxplot 
-
-```{r}
-renderPlot({
-  req(computeMedSplits)
-  
-  splits <- computeMedSplits() %>% 
-    filter(!is.na(Median_Split_Bins))
-  
-  ggplot(splits) + 
-    aes(x = Group, y = Value) + 
-    geom_boxplot() +
-    labs(y = input$splittingMeasure)
-})
-```
-
-
-### Summary 
-
-```{r}
-medianSplitStats <- reactive({
-  req(computeMedSplits)
-  computeMedSplits() %>% 
-    group_by(StudySet, Group, Median_Split) %>% 
-    summarise(N = n(), Mean = mean(Value), Min = min(Value), Max = max(Value)) %>% 
-    ungroup %>% 
-    select(-StudySet)
-})
-
-renderTable(medianSplitStats())
-```

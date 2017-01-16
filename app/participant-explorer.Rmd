@@ -50,7 +50,7 @@ Row {data-height=450}
 ```{r select-group}
 renderUI({
   req(currentDataClean)
-  groups <- currentDataClean() %>% getElement("Group") %>% unique %>% sort
+  groups <- currentDataClean() %>% getElement("Group") %>% unique() %>% sort()
   selectInput(
     inputId = 'groupName', 
     label = 'Choose group:', 
@@ -68,7 +68,7 @@ renderUI({
     distinct(Group, Subject) %>% 
     filter(Group == input$groupName) %>%
     getElement("Subject") %>% 
-    sort
+    sort()
   
   selectInput(
     inputId = 'currentParticipant', 
